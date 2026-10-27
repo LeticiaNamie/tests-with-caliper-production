@@ -1,0 +1,23 @@
+diff --git a/node_modules/@hyperledger/caliper-ethereum/lib/ethereum-connector.js b/node_modules/@hyperledger/caliper-ethereum/lib/ethereum-connector.js
+index 0482055..7e32042 100644
+--- a/node_modules/@hyperledger/caliper-ethereum/lib/ethereum-connector.js
++++ b/node_modules/@hyperledger/caliper-ethereum/lib/ethereum-connector.js
+@@ -54,7 +54,18 @@ class EthereumConnector extends ConnectorBase {
+         if (this.ethereumConfig.privacy) {
+             this.web3eea = new EEAClient(this.web3, ethereumConfig.chainId);
+         }
++        // NOTA: essa linha na verdade não tem efeito (a propriedade real fica em
++        // "web3.eth.transactionConfirmationBlocks", não em "web3.transactionConfirmationBlocks" —
++        // então a lib usa o padrão dela, 24 blocos). Mantido de propósito sem corrigir, pra não
++        // quebrar a comparação com dados já coletados antes dessa descoberta.
+         this.web3.transactionConfirmationBlocks = this.ethereumConfig.transactionConfirmationBlocks;
++        // Padrão do web3.js é 50 blocos — sob carga pesada, com o bloco real demorando mais
++        // que o nominal (round-change/backlog), transações que ainda seriam confirmadas depois
++        // acabam contadas como Fail antes da hora. Configurável via networkconfig.json pra dar
++        // pra comparar valores sem precisar editar código a cada teste.
++        if (this.ethereumConfig.transactionBlockTimeout) {
++            this.web3.eth.transactionBlockTimeout = this.ethereumConfig.transactionBlockTimeout;
++        }
+         this.workerIndex = workerIndex;
+         this.context = undefined;
+     }

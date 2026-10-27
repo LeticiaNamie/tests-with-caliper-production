@@ -1,0 +1,8 @@
+node_modules
+.env
+
+# Resultados de rodadas de teste locais (dados, não código-fonte)
+src/*_resource_metrics_by_tps/*.csv
+src/reports/*/*.csv
+src/*.png
+

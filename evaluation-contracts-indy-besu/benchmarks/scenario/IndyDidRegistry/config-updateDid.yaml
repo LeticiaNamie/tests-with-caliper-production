@@ -1,0 +1,77 @@
+simpleArgs: &simple-args
+  document:
+    [
+      [],
+      "did:indy2:indy_besu:MRDxoJ2Mz3ZuyqaqsjVTdN",
+      [],
+      [
+        [
+          "did:indy2:indy_besu:RQDxoJ2Mz3WuyqaqsjVTdN#KEY-1",
+          "Ed25519VerificationKey2018",
+          "did:indy2:testnet:MUDA_N22WedHLJdFf4yMaDXdhJcL98",
+          "MUDA_HAFkhqbPbor781QCMfNvr6oQTTixK9U7gZmDV7pszTHp",
+          "",
+        ],
+      ],
+      [
+        [
+          "did:indy2:indy_besu:RQDxoJ2Mz3WuyqaqsjVTdN#KEY-1",
+          ["1", "1", "1", "1", "1"],
+        ],
+      ],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+    ]
+  numberOfAccounts: &number-of-accounts 1
+  timeOfTest: &time-of-test 10
+
+test:
+  name: updateDid Test
+  description: >-
+    This is an example benchmark for Caliper, to test the backend DLT's
+    performance with simple account opening & querying transactions.
+  workers:
+    number: 12
+  rounds:
+    - label: updateDid
+      description: >-
+        Test description for the opening of an account through the deployed
+        contract.
+      txDuration: *time-of-test
+      rateControl:
+        type: fixed-rate
+        opts:
+          tps: 120
+      workload:
+        module: benchmarks/scenario/IndyDidRegistry/updateDid.js
+        arguments: *simple-args
+
+monitors:
+  resource:
+    - module: prometheus
+      options:
+        url: "http://localhost:9090"
+        interval: 5
+        metrics:
+          include: ["^node1$", "^node2$", "^node3$", "^node4$", "^node5$", "^node6$"]
+          queries:
+            - name: CPU(%)
+              query: irate(process_cpu_seconds_total[10s])
+              statistic: avg
+              step: 1
+              multiplier: 100
+              label: instance
+            - name: Memory(MB)
+              query: process_resident_memory_bytes
+              statistic: avg
+              step: 1
+              multiplier: 0.000001
+              label: instance
+
+observer:
+  type: local
+  interval: 5

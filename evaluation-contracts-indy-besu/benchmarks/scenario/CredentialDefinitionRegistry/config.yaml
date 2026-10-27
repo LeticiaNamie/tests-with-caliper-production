@@ -1,0 +1,59 @@
+simpleArgs: &simple-args
+  credDef:
+    [
+      "did:indy2:indy_besu:MRDxoJ2Mz3ZuyqaqsjVTdN/anoncreds/v0/CLAIM_DEF/did:indy2:indy_besu:MRDxoJ2Mz3ZuyqaqsjVTdN/anoncreds/v0/SCHEMA/BasicIdentity/1.0.0/BasicIdentity",
+      "did:indy2:indy_besu:MRDxoJ2Mz3ZuyqaqsjVTdN",
+      "did:indy2:indy_besu:MRDxoJ2Mz3ZuyqaqsjVTdN/anoncreds/v0/SCHEMA/ScoreSch1/1.0",
+      "CL",
+      "BasicIdentity",
+      "<keys>",
+    ]
+  numberOfAccounts: &number-of-accounts 1
+  timeOfTest: &time-of-test 10
+
+test:
+  name: createCredentialDefinition Test
+  description: >-
+    This is an example benchmark for Caliper, to test the backend DLT's
+    performance with simple account opening & querying transactions.
+  workers:
+    number: 12
+  rounds:
+    - label: createCredentialDefinition
+      description: >-
+        Test description for the opening of an account through the deployed
+        contract.
+      txDuration: *time-of-test
+      rateControl:
+        type: fixed-rate
+        opts:
+          tps: 120
+      workload:
+        module: benchmarks/scenario/CredentialDefinitionRegistry/createCredentialDefinition.js
+        arguments: *simple-args
+
+monitors:
+  resource:
+    - module: prometheus
+      options:
+        url: "http://localhost:9090"
+        interval: 5
+        metrics:
+          include: ["^node1$", "^node2$", "^node3$", "^node4$", "^node5$", "^node6$"]
+          queries:
+            - name: CPU(%)
+              query: irate(process_cpu_seconds_total[10s])
+              statistic: avg
+              step: 1
+              multiplier: 100
+              label: instance
+            - name: Memory(MB)
+              query: process_resident_memory_bytes
+              statistic: avg
+              step: 1
+              multiplier: 0.000001
+              label: instance
+
+observer:
+  type: local
+  interval: 5
