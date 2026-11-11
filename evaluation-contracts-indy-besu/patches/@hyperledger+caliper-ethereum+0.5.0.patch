@@ -1,8 +1,22 @@
 diff --git a/node_modules/@hyperledger/caliper-ethereum/lib/ethereum-connector.js b/node_modules/@hyperledger/caliper-ethereum/lib/ethereum-connector.js
-index 0482055..7e32042 100644
+index 0482055..d8fdcf0 100644
 --- a/node_modules/@hyperledger/caliper-ethereum/lib/ethereum-connector.js
 +++ b/node_modules/@hyperledger/caliper-ethereum/lib/ethereum-connector.js
-@@ -54,7 +54,18 @@ class EthereumConnector extends ConnectorBase {
+@@ -50,11 +50,31 @@ class EthereumConnector extends ConnectorBase {
+         this.checkConfig(ethereumConfig);
+ 
+         this.ethereumConfig = ethereumConfig;
+-        this.web3 = new Web3(this.ethereumConfig.url);
++        // "urls" (opcional) espalha os workers entre vários nós: o worker de índice i usa
++        // urls[i % urls.length]. Cada worker tem sua própria conta (fromAddressSeed) e nonces
++        // locais, então mandar workers diferentes para nós diferentes não quebra a ordem das
++        // transações de uma mesma conta. O manager (índice -1) e a ausência de "urls" usam "url".
++        const urls = this.ethereumConfig.urls;
++        const nodeUrl = (Array.isArray(urls) && urls.length > 0 && workerIndex >= 0)
++            ? urls[workerIndex % urls.length]
++            : this.ethereumConfig.url;
++        logger.info(`Worker ${workerIndex} conectando em ${nodeUrl}`);
++        this.web3 = new Web3(nodeUrl);
          if (this.ethereumConfig.privacy) {
              this.web3eea = new EEAClient(this.web3, ethereumConfig.chainId);
          }
@@ -21,3 +35,14 @@ index 0482055..7e32042 100644
          this.workerIndex = workerIndex;
          this.context = undefined;
      }
+@@ -79,6 +99,10 @@ class EthereumConnector extends ConnectorBase {
+             );
+         }
+ 
++        if (Array.isArray(ethereumConfig.urls) && ethereumConfig.urls.some(u => u.toLowerCase().indexOf('http') === 0)) {
++            throw new Error('"urls" do Ethereum SUT deve conter apenas endpoints WebSocket (ws://), nunca http(s).');
++        }
++
+         //TODO: add validation logic for the rest of the configuration object
+     }
+ 

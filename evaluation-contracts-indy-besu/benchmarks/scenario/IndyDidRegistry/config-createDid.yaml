@@ -52,6 +52,19 @@ test:
 
 monitors:
   resource:
+    # Workers do Caliper (processos "node <cli> launch worker"). O ps-node casa o regex
+    # contra os argumentos unidos por vírgula e o regex exclui o wrapper "npx caliper ...".
+    # Só enxerga os workers desta VM; no modo distribuído os da instância B não aparecem.
+    - module: process
+      options:
+        interval: 1
+        processes:
+          - command: node
+            arguments: '(/caliper|caliper\.js),launch,worker'
+            multiOutput: avg
+          - command: node
+            arguments: '(/caliper|caliper\.js),launch,worker'
+            multiOutput: sum
     - module: prometheus
       options:
         url: "http://localhost:9090"
@@ -70,6 +83,16 @@ monitors:
               statistic: avg
               step: 1
               multiplier: 0.000001
+              label: instance
+            - name: TxPool - transacoes (max)
+              query: sum by (instance) (besu_transaction_pool_number_of_transactions)
+              statistic: max
+              step: 5
+              label: instance
+            - name: TxPool - rejeitadas (pico/15s)
+              query: sum by (instance) (increase(besu_transaction_pool_rejected_total[15s]))
+              statistic: max
+              step: 5
               label: instance
 
 observer:

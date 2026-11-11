@@ -11,10 +11,10 @@ BENCHMARK_FILES = {
 }
 
 # TPS a ser testado (20 a 120, de 20 em 20)
-TPS_LIST = [1000, 3000, 5000]
+TPS_LIST = [1000]
 
 # Quantidade de repetições completas da varredura (todas as funções x todos os TPS)
-REPETITIONS = 1
+REPETITIONS = 3
 
 # Mesma variável usada pelo setup_issuer.js (exportada pelo run_caliper_tests.sh);
 # fallback local para quando o script roda fora da EC2 provisionada.

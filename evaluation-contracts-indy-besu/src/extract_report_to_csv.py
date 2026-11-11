@@ -19,6 +19,8 @@ def extract_summary_from_html(file_path):
     tables = soup.find_all('table')
     summary_data = []
     resource_data = []
+    worker_data = []
+    txpool_data = []
 
     for table in tables:
         # --- SUMÁRIO DE MÉTRICAS ---
@@ -42,7 +44,7 @@ def extract_summary_from_html(file_path):
                         print(f"⚠ Erro ao converter dados no arquivo {file_path}: {cols}")
 
         # --- RECURSOS VIA DOCKER MONITOR ---
-        if not resource_data and table.find('th') and 'CPU%(max)' in table.text:
+        if not resource_data and table.find('th') and 'CPU%(max)' in table.text and 'Traffic In' in table.text:
             print(f"✅ Tabela de recursos (Docker) detectada no arquivo: {file_path}")
             rows = table.find_all('tr')[1:]  # apenas 1 header
             for row in rows:
@@ -66,8 +68,34 @@ def extract_summary_from_html(file_path):
                     except ValueError:
                         print(f"⚠ Erro ao converter dados de recurso no arquivo {file_path}: {cols}")
 
+        # --- RECURSOS DOS WORKERS VIA PROCESS MONITOR ---
+        if table.find('th') and 'CPU%(max)' in table.text and 'Traffic In' not in table.text \
+                and 'Prometheus Query' not in table.text:
+            headers = [th.text.strip() for th in table.find_all('tr')[0].find_all('th')]
+            mem_max_col = next((h for h in headers if h.startswith('Memory(max)')), 'Memory(max)')
+            mem_avg_col = next((h for h in headers if h.startswith('Memory(avg)')), 'Memory(avg)')
+            for row in table.find_all('tr')[1:]:
+                cols = [td.text.strip() for td in row.find_all('td')]
+                if len(cols) != len(headers):
+                    continue
+                rec = dict(zip(headers, cols))
+                try:
+                    worker_data.append({
+                        'Name': rec['Name'],
+                        'CPU%(max)': float(rec['CPU%(max)']),
+                        'CPU%(avg)': float(rec['CPU%(avg)']),
+                        # Caliper 0.5.0 imprime '-' na memória do monitor process (bug do
+                        # normalizeStats, que recebe string); vira vazio no CSV.
+                        mem_max_col: float(rec[mem_max_col]) if rec[mem_max_col] != '-' else None,
+                        mem_avg_col: float(rec[mem_avg_col]) if rec[mem_avg_col] != '-' else None,
+                    })
+                except (KeyError, ValueError):
+                    print(f"⚠ Erro ao converter dados de workers no arquivo {file_path}: {cols}")
+
         # --- RECURSOS VIA PROMETHEUS MONITOR ---
-        if not resource_data and table.find('th') and 'Prometheus Query' in table.text:
+        # Linhas "TxPool - ..." (pool do Besu) vão para txpool_data; o resto mantém o
+        # comportamento anterior (resource_data, só se ainda vazio).
+        if table.find('th') and 'Prometheus Query' in table.text:
             print(f"✅ Tabela de recursos (Prometheus) detectada no arquivo: {file_path}")
             rows = table.find_all('tr')[1:]  # pula header
             current_metric = None
@@ -84,15 +112,19 @@ def extract_summary_from_html(file_path):
                 if not name or name == 'N/A':
                     continue
                 try:
-                    resource_data.append({
+                    entry = {
                         'Metric': current_metric,
                         'Query': current_query,
                         'Name': name,
                         'Value': float(value_str) if value_str not in ('', '-') else None,
-                    })
+                    }
+                    if current_metric and current_metric.startswith('TxPool'):
+                        txpool_data.append(entry)
+                    elif not resource_data or 'Metric' in resource_data[0]:
+                        resource_data.append(entry)
                 except ValueError:
                     print(f"⚠ Erro ao converter dados Prometheus no arquivo {file_path}: {cols}")
-    return summary_data, resource_data
+    return summary_data, resource_data, worker_data, txpool_data
 
 
 def extract_tps_from_filename(filename):
@@ -105,10 +137,12 @@ def extract_tps_from_filename(filename):
 def parse_all_reports(folder_path, script_name):
     all_summary = []
     all_resources = []
+    all_workers = []
+    all_txpool = []
     for file in os.listdir(folder_path):
         if file.startswith(script_name) and file.endswith(".html"):
             file_path = os.path.join(folder_path, file)
-            summary_data, resource_data = extract_summary_from_html(file_path)
+            summary_data, resource_data, worker_data, txpool_data = extract_summary_from_html(file_path)
             tps = extract_tps_from_filename(file)
             for entry in summary_data:
                 entry['ReportFile'] = file
@@ -118,7 +152,16 @@ def parse_all_reports(folder_path, script_name):
                 entry['ReportFile'] = file
                 entry['Rate'] = tps
                 all_resources.append(entry)
-    return pd.DataFrame(all_summary), pd.DataFrame(all_resources)
+            for entry in worker_data:
+                entry['ReportFile'] = file
+                entry['Rate'] = tps
+                all_workers.append(entry)
+            for entry in txpool_data:
+                entry['ReportFile'] = file
+                entry['Rate'] = tps
+                all_txpool.append(entry)
+    return (pd.DataFrame(all_summary), pd.DataFrame(all_resources),
+            pd.DataFrame(all_workers), pd.DataFrame(all_txpool))
 
 
 if __name__ == "__main__":
@@ -128,14 +171,21 @@ if __name__ == "__main__":
             print(f"⚠ Pasta não encontrada, pulando: {report_folder}")
             continue
 
-        df_summary, df_resources = parse_all_reports(report_folder, script_name)
+        df_summary, df_resources, df_workers, df_txpool = parse_all_reports(report_folder, script_name)
 
         output_summary_csv = os.path.join(report_folder, f"{script_name}_summary_metrics.csv")
         output_resources_csv = os.path.join(report_folder, f"{script_name}_resource_metrics.csv")
 
+        output_workers_csv = os.path.join(report_folder, f"{script_name}_worker_metrics.csv")
+        output_txpool_csv = os.path.join(report_folder, f"{script_name}_txpool_metrics.csv")
+
         df_summary.to_csv(output_summary_csv, index=False)
+        df_workers.to_csv(output_workers_csv, index=False)
+        df_txpool.to_csv(output_txpool_csv, index=False)
         df_resources.to_csv(output_resources_csv, index=False)
 
         print(f"✅ [{script_name}] Arquivos salvos:")
         print(f"  - {output_summary_csv}")
         print(f"  - {output_resources_csv}")
+        print(f"  - {output_workers_csv}")
+        print(f"  - {output_txpool_csv}")
